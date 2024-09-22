@@ -11,6 +11,31 @@ mod routes;
 struct AppState {
     db: sqlx::PgPool,
     cookie_key: cja::server::cookies::CookieKey,
+    zoom: ZoomState,
+    base_url: String,
+}
+
+#[derive(Clone, Debug)]
+struct ZoomState {
+    client_id: String,
+    client_secret: String,
+    secret_token: String,
+}
+
+impl ZoomState {
+    fn from_env() -> cja::Result<Self> {
+        let client_id = std::env::var("ZOOM_CLIENT_ID").context("ZOOM_CLIENT_ID not set")?;
+        let client_secret =
+            std::env::var("ZOOM_CLIENT_SECRET").context("ZOOM_CLIENT_SECRET not set")?;
+        let secret_token =
+            std::env::var("ZOOM_SECRET_TOKEN").context("ZOOM_SECRET_TOKEN not set")?;
+
+        Ok(Self {
+            client_id,
+            client_secret,
+            secret_token,
+        })
+    }
 }
 
 impl AS for AppState {
@@ -24,6 +49,12 @@ impl AS for AppState {
 
     fn cookie_key(&self) -> &cja::server::cookies::CookieKey {
         &self.cookie_key
+    }
+}
+
+impl AppState {
+    fn zoom_redirect_url(&self) -> String {
+        format!("{}/oauth/zoom", self.base_url)
     }
 }
 
@@ -44,9 +75,14 @@ async fn _main() -> cja::Result<()> {
 
     let cookie_key = cja::server::cookies::CookieKey::from_env_or_generate()?;
 
+    let base_url = std::env::var("BASE_URL").context("BASE_URL not set")?;
+    let zoom = ZoomState::from_env()?;
+
     let app_state = AppState {
         db: db_pool,
         cookie_key,
+        zoom,
+        base_url,
     };
 
     let app = routes::routes(app_state.clone());
