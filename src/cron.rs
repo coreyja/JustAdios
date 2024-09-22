@@ -1,9 +1,13 @@
+use std::time::Duration;
+
 use cja::cron::{CronRegistry, Worker};
 
-use crate::AppState;
+use crate::{jobs::CheckAndEndTooLongMeetings, AppState};
 
 fn cron_registry() -> CronRegistry<AppState> {
-    CronRegistry::new()
+    let mut registry = CronRegistry::new();
+    registry.register_job(CheckAndEndTooLongMeetings, Duration::from_secs(30));
+    registry
 }
 
 pub(crate) async fn run_cron(app_state: AppState) -> cja::Result<()> {

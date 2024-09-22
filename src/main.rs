@@ -1,4 +1,7 @@
-use cja::{app_state::AppState as AS, color_eyre::eyre::Context as _, server::run_server};
+use chrono::{DateTime, Utc};
+use cja::{
+    app_state::AppState as AS, color_eyre::eyre::Context as _, server::run_server, uuid::Uuid,
+};
 use db::setup_db_pool;
 use tracing::info;
 
@@ -6,6 +9,8 @@ mod cron;
 mod db;
 mod jobs;
 mod routes;
+
+mod zoom;
 
 #[derive(Clone, Debug)]
 struct AppState {
@@ -101,4 +106,15 @@ async fn _main() -> cja::Result<()> {
     futures::future::try_join_all(futures).await?;
 
     Ok(())
+}
+
+pub struct User {
+    user_id: Uuid,
+    zoom_id: String,
+    display_name: String,
+    access_token: String,
+    refresh_token: String,
+    expires_at: DateTime<Utc>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
 }

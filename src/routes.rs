@@ -10,13 +10,102 @@ use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use tower_cookies::Cookies;
 
-use crate::AppState;
+use crate::{
+    zoom::{adios, get_meetings, MeetingType},
+    AppState, User,
+};
 
 pub fn routes(app_state: AppState) -> axum::Router {
     axum::Router::new()
         .route("/", get(home))
+        .route("/meetings", get(meetings))
+        .route("/meetings/end", get(end_meeting))
         .route("/oauth/zoom", get(zoom_oauth))
         .with_state(app_state)
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct EndMeetingParams {
+    meeting_id: String,
+}
+
+async fn end_meeting(
+    State(state): State<AppState>,
+    session: DBSession,
+    Query(params): Query<EndMeetingParams>,
+) -> Result<impl IntoResponse, Response> {
+    let user = sqlx::query_as!(
+        User,
+        "SELECT * FROM users WHERE user_id = $1",
+        session.user_id,
+    )
+    .fetch_one(state.db())
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to fetch user: {e:?}");
+        (StatusCode::INTERNAL_SERVER_ERROR, "Failed to fetch user").into_response()
+    })?;
+
+    let meeting_id = params.meeting_id.parse::<i64>().map_err(|e| {
+        tracing::error!("Failed to parse meeting id: {e:?}");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to parse meeting id",
+        )
+            .into_response()
+    })?;
+
+    adios(meeting_id, &user.access_token).await.map_err(|e| {
+        tracing::error!("Failed to end meeting: {e:?}");
+        (StatusCode::INTERNAL_SERVER_ERROR, "Failed to end meeting").into_response()
+    })?;
+
+    Ok(Redirect::temporary("/meetings").into_response())
+}
+
+async fn meetings(
+    State(state): State<AppState>,
+    session: DBSession,
+) -> Result<impl IntoResponse, Response> {
+    let user = sqlx::query_as!(
+        User,
+        "SELECT * FROM users WHERE user_id = $1",
+        session.user_id,
+    )
+    .fetch_one(state.db())
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to fetch user: {e:?}");
+        (StatusCode::INTERNAL_SERVER_ERROR, "Failed to fetch user").into_response()
+    })?;
+
+    let meetings = get_meetings(&user.access_token, MeetingType::Live)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get meetings: {e:?}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "Failed to get meetings").into_response()
+        })?;
+
+    Ok(html! {
+        h1 { "Meetings" }
+
+        p {
+            "You are logged in as " (user.display_name)
+        }
+
+        p {
+          "Total meetings: " (meetings.total_records)
+        }
+
+        ul {
+          @for meeting in meetings.meetings {
+            li {
+              (format!("{meeting:?}"))
+              (meeting.live_duration().unwrap_or(-1))
+            }
+          }
+        }
+    })
 }
 
 async fn home(State(state): State<AppState>, session: Option<DBSession>) -> impl IntoResponse {
@@ -47,6 +136,8 @@ async fn home(State(state): State<AppState>, session: Option<DBSession>) -> impl
           p {
               "You are logged in as " (user.display_name)
           }
+
+          a href="/meetings" { "Meetings" }
         }
 
         p {
@@ -167,22 +258,6 @@ async fn zoom_oauth(
 
     tracing::info!("User inserted into database: {}", user.user_id);
 
-    // let session = sqlx::query_as!(
-    //     DBSession,
-    //     "INSERT INTO sessions (user_id) VALUES ($1) RETURNING *",
-    //     user.user_id,
-    // )
-    // .fetch_one(state.db())
-    // .await
-    // .map_err(|e| {
-    //     tracing::error!("Failed to insert session into database: {e:?}");
-    //     (
-    //         StatusCode::INTERNAL_SERVER_ERROR,
-    //         "Failed to insert session into database",
-    //     )
-    //         .into_response()
-    // })?;
-
     DBSession::create(user.user_id, &state, &cookies)
         .await
         .map_err(|e| {
@@ -201,15 +276,4 @@ async fn zoom_oauth(
 struct ZoomUser {
     id: String,
     display_name: String,
-}
-
-struct User {
-    user_id: Uuid,
-    zoom_id: String,
-    display_name: String,
-    access_token: String,
-    refresh_token: String,
-    expires_at: DateTime<Utc>,
-    created_at: DateTime<Utc>,
-    updated_at: DateTime<Utc>,
 }
