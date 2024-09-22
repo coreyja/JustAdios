@@ -17,3 +17,8 @@ target/
 #.idea/
 
 .envrc
+
+
+# Added by cargo
+
+/target
