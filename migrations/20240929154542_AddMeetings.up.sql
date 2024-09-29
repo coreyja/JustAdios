@@ -1,7 +1,7 @@
 -- Add up migration script here
 CREATE TABLE
   meetings (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid (),
+    meeting_id UUID PRIMARY KEY DEFAULT gen_random_uuid (),
     user_id UUID NOT NULL REFERENCES Users (user_id),
     zoom_id TEXT NOT NULL,
     zoom_uuid TEXT NOT NULL,

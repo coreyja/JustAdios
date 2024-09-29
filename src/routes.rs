@@ -158,13 +158,13 @@ struct ZoomOauthRedirectParams {
 }
 
 #[derive(Serialize, Deserialize)]
-struct ZoomTokenResponse {
-    access_token: String,
-    api_url: String,
-    expires_in: i64,
-    refresh_token: String,
-    scope: String,
-    token_type: String,
+pub(crate) struct ZoomTokenResponse {
+    pub(crate) access_token: String,
+    pub(crate) api_url: String,
+    pub(crate) expires_in: i64,
+    pub(crate) refresh_token: String,
+    pub(crate) scope: String,
+    pub(crate) token_type: String,
 }
 
 async fn zoom_oauth(

@@ -1,6 +1,8 @@
 use eyre::Context;
-use reqwest::Client;
+use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
+
+use crate::{routes::ZoomTokenResponse, ZoomState};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub(crate) struct Meetings {
@@ -30,9 +32,12 @@ struct UpdateMeetingStatusBody {
     action: String,
 }
 
-pub(crate) async fn adios(meeting_id: i64, access_token: &str) -> cja::Result<()> {
+pub(crate) async fn adios(meeting_id: impl ToString, access_token: &str) -> cja::Result<()> {
     let client = Client::new();
-    let url = format!("https://api.zoom.us/v2/meetings/{}/status", meeting_id);
+    let url = format!(
+        "https://api.zoom.us/v2/meetings/{}/status",
+        meeting_id.to_string()
+    );
     let body = UpdateMeetingStatusBody {
         action: "end".to_string(),
     };
@@ -133,4 +138,26 @@ pub(crate) async fn get_meetings(
     dbg!(&resp_text);
 
     Ok(serde_json::from_str(&resp_text)?)
+}
+
+pub(crate) async fn refresh_access_token(
+    zoom_state: &ZoomState,
+    refresh_token: &str,
+) -> cja::Result<ZoomTokenResponse> {
+    let client = Client::new();
+    let access_token_response = client
+        .post("https://zoom.us/oauth/token")
+        .basic_auth(&zoom_state.client_id, Some(&zoom_state.client_secret))
+        .form(&[
+            ("grant_type", "refresh_token"),
+            ("refresh_token", refresh_token),
+        ])
+        .send()
+        .await?;
+
+    let token_response_text = access_token_response.text().await?;
+
+    let token_response: ZoomTokenResponse = serde_json::from_str(&token_response_text)?;
+
+    Ok(token_response)
 }

@@ -74,7 +74,7 @@ fn main() -> cja::Result<()> {
 }
 
 async fn _main() -> cja::Result<()> {
-    cja::setup::setup_tracing("just-adios")?;
+    cja::setup::setup_tracing("JustAdios")?;
 
     let db_pool = setup_db_pool().await.context("Failed to setup DB Pool")?;
 
@@ -107,5 +107,3 @@ async fn _main() -> cja::Result<()> {
 
     Ok(())
 }
-
-
