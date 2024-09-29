@@ -17,6 +17,8 @@ pub(crate) struct ZoomWebhookBody {
 enum ZoomWebhookEvent {
     MeetingStarted(MeetingStartedPayload),
     MeetingEnded(MeetingEndedPayload),
+    ParticipantJoined(ParticipantJoinedPayload),
+    ParticipantLeft(ParticipantLeftPayload),
 }
 
 impl TryFrom<ZoomWebhookBody> for ZoomWebhookEvent {
@@ -28,6 +30,12 @@ impl TryFrom<ZoomWebhookBody> for ZoomWebhookEvent {
                 Ok(serde_json::from_value(body.payload).map(Self::MeetingStarted)?)
             }
             "meeting.ended" => Ok(serde_json::from_value(body.payload).map(Self::MeetingEnded)?),
+            "meeting.participant_joined" => {
+                Ok(serde_json::from_value(body.payload).map(Self::ParticipantJoined)?)
+            }
+            "meeting.participant_left" => {
+                Ok(serde_json::from_value(body.payload).map(Self::ParticipantLeft)?)
+            }
             _ => Err(eyre!("Unknown event type")),
         }
     }
@@ -42,6 +50,8 @@ impl ProcessZoomWebhook for ZoomWebhookEvent {
         match self {
             Self::MeetingStarted(payload) => payload.process(state).await,
             Self::MeetingEnded(payload) => payload.process(state).await,
+            Self::ParticipantJoined(payload) => payload.process(state).await,
+            Self::ParticipantLeft(payload) => payload.process(state).await,
         }
     }
 }
@@ -136,7 +146,8 @@ pub(crate) async fn zoom_webhook(
 ) -> Result<(), Response> {
     tracing::info!("Processing zoom webhook event: {:?}", body.event);
 
-    let event = ZoomWebhookEvent::try_from(body).map_err(|e| {
+    let event = ZoomWebhookEvent::try_from(body.clone()).map_err(|e| {
+        tracing::error!("Invalid zoom webhook body: {:?}", body);
         (
             axum::http::StatusCode::BAD_REQUEST,
             format!("Invalid zoom webhook body: {}", e),
@@ -145,4 +156,75 @@ pub(crate) async fn zoom_webhook(
     })?;
 
     event.process(&app_state).await
+}
+
+#[derive(Serialize, Deserialize)]
+struct ParticipantJoined {
+    email: String,
+    id: String,
+    join_time: String,
+    participant_user_id: String,
+    participant_uuid: String,
+    user_id: String,
+    user_name: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ParticipantJoinedPayloadInner {
+    id: String,
+    participant: ParticipantJoined,
+    start_time: String,
+    timezone: String,
+    topic: String,
+    r#type: i64,
+    uuid: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ParticipantJoinedPayload {
+    account_id: String,
+    object: ParticipantJoinedPayloadInner,
+}
+
+impl ProcessZoomWebhook for ParticipantJoinedPayload {
+    async fn process(self, _state: &AppState) -> Result<(), Response> {
+        tracing::info!("Participant joined -- No-Oping for now");
+        Ok(())
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct ParticipantLeft {
+    email: String,
+    id: String,
+    leave_reason: String,
+    leave_time: String,
+    participant_user_id: String,
+    participant_uuid: String,
+    registrant_id: String,
+    user_id: String,
+    user_name: String,
+}
+#[derive(Serialize, Deserialize)]
+struct ParticipantLeftPayloadInner {
+    id: String,
+    participant: ParticipantLeft,
+    start_time: String,
+    timezone: String,
+    topic: String,
+    r#type: i64,
+    uuid: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ParticipantLeftPayload {
+    account_id: String,
+    object: ParticipantLeftPayloadInner,
+}
+
+impl ProcessZoomWebhook for ParticipantLeftPayload {
+    async fn process(self, _state: &AppState) -> Result<(), Response> {
+        tracing::info!("Participant left -- No-Oping for now");
+        Ok(())
+    }
 }
