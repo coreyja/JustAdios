@@ -100,6 +100,8 @@ async fn _main() -> cja::Result<()> {
     }
     info!("Tasks Spawned");
 
+    println!("Hey it's Seif, just checking if forking and making pr works!");
+
     futures::future::try_join_all(futures).await?;
 
     Ok(())
