@@ -2,8 +2,9 @@ use cja::{jobs::Job, uuid::Uuid};
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    db::DBUser,
     zoom::{get_meetings, MeetingType},
-    AppState, User,
+    AppState,
 };
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -30,7 +31,7 @@ impl Job<AppState> for CheckAndEndTooLongUserMeetings {
 
     async fn run(&self, app_state: AppState) -> cja::Result<()> {
         let user_id = self.0 .0;
-        let user = sqlx::query_as!(User, "SELECT * FROM users WHERE user_id = $1", user_id)
+        let user = sqlx::query_as!(DBUser, "SELECT * FROM users WHERE user_id = $1", user_id)
             .fetch_one(&app_state.db)
             .await?;
 
@@ -54,7 +55,7 @@ impl Job<AppState> for CheckAndEndTooLongMeetings {
     const NAME: &'static str = "CheckAndEndTooLongMeetings";
 
     async fn run(&self, app_state: AppState) -> cja::Result<()> {
-        let users = sqlx::query_as!(User, "SELECT * FROM users")
+        let users = sqlx::query_as!(DBUser, "SELECT * FROM users")
             .fetch_all(&app_state.db)
             .await?;
 

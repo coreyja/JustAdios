@@ -108,13 +108,4 @@ async fn _main() -> cja::Result<()> {
     Ok(())
 }
 
-pub struct User {
-    user_id: Uuid,
-    zoom_id: String,
-    display_name: String,
-    access_token: String,
-    refresh_token: String,
-    expires_at: DateTime<Utc>,
-    created_at: DateTime<Utc>,
-    updated_at: DateTime<Utc>,
-}
+

@@ -1,7 +1,7 @@
 use axum::{
     extract::{Query, State},
     response::{IntoResponse, Redirect, Response},
-    routing::get,
+    routing::{get, post},
 };
 use chrono::{DateTime, Utc};
 use cja::{app_state::AppState as _, server::session::DBSession, uuid::Uuid};
@@ -10,9 +10,12 @@ use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use tower_cookies::Cookies;
 
+mod webhooks;
+
 use crate::{
+    db::DBUser,
     zoom::{adios, get_meetings, MeetingType},
-    AppState, User,
+    AppState,
 };
 
 pub fn routes(app_state: AppState) -> axum::Router {
@@ -21,6 +24,7 @@ pub fn routes(app_state: AppState) -> axum::Router {
         .route("/meetings", get(meetings))
         .route("/meetings/end", get(end_meeting))
         .route("/oauth/zoom", get(zoom_oauth))
+        .route("/webhooks/zoom", post(webhooks::zoom_webhook))
         .with_state(app_state)
 }
 
@@ -35,7 +39,7 @@ async fn end_meeting(
     Query(params): Query<EndMeetingParams>,
 ) -> Result<impl IntoResponse, Response> {
     let user = sqlx::query_as!(
-        User,
+        DBUser,
         "SELECT * FROM users WHERE user_id = $1",
         session.user_id,
     )
@@ -68,7 +72,7 @@ async fn meetings(
     session: DBSession,
 ) -> Result<impl IntoResponse, Response> {
     let user = sqlx::query_as!(
-        User,
+        DBUser,
         "SELECT * FROM users WHERE user_id = $1",
         session.user_id,
     )
@@ -118,7 +122,7 @@ async fn home(State(state): State<AppState>, session: Option<DBSession>) -> impl
     let user = if let Some(session) = session {
         tracing::info!("Session {} found, fetching user", session.session_id);
         sqlx::query_as!(
-            User,
+            DBUser,
             "SELECT * FROM users WHERE user_id = $1",
             session.user_id,
         )
@@ -240,7 +244,7 @@ async fn zoom_oauth(
 
     let expires_at = Utc::now() + chrono::Duration::seconds(token_response.expires_in);
     let user = sqlx::query_as!(
-      User,
+      DBUser,
       "INSERT INTO users (zoom_id, display_name, access_token, refresh_token, expires_at) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (zoom_id) DO UPDATE SET (display_name, access_token, refresh_token, expires_at, updated_at) = ($2, $3, $4, $5, now()) RETURNING *",
       user_info.id,
       user_info.display_name,
