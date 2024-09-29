@@ -1,12 +1,17 @@
 use axum::{
     extract::State,
+    http::HeaderMap,
     response::{IntoResponse, Response},
-    Json,
 };
 use eyre::eyre;
+use hmac::{KeyInit as _, Mac, SimpleHmac};
 use serde::{Deserialize, Serialize};
+use sha2::Sha256;
 
-use crate::{db::DBMeeting, db::DBUser, AppState};
+use crate::{
+    db::{DBMeeting, DBUser},
+    AppState,
+};
 
 #[derive(Debug, Deserialize, Clone, Serialize)]
 pub(crate) struct ZoomWebhookBody {
@@ -139,11 +144,45 @@ impl ProcessZoomWebhook for MeetingEndedPayload {
     }
 }
 
+fn verify_zoom_signature(
+    secret_token: &str,
+    headers: &HeaderMap,
+    body: &str,
+) -> Result<(), Response> {
+    let zoom_timestamp = headers.get("x-zm-request-timestamp").unwrap();
+    let message = format!("v0:{}:{}", zoom_timestamp.to_str().unwrap(), body);
+
+    let mut mac = SimpleHmac::<Sha256>::new_from_slice(secret_token.as_bytes())
+        .expect("HMAC can take key of any size");
+    mac.update(message.as_bytes());
+
+    let result = mac.finalize();
+    let code_bytes = result.into_bytes().to_vec();
+    let code = hex::encode(code_bytes);
+    let signature = format!("v0={}", code);
+
+    let zoom_signature = headers.get("x-zm-signature").unwrap();
+
+    if zoom_signature != &signature {
+        return Err((
+            axum::http::StatusCode::BAD_REQUEST,
+            "Invalid zoom webhook signature",
+        )
+            .into_response());
+    }
+
+    Ok(())
+}
+
 #[axum_macros::debug_handler]
 pub(crate) async fn zoom_webhook(
     State(app_state): State<AppState>,
-    Json(body): Json<ZoomWebhookBody>,
+    headers: HeaderMap,
+    body: String,
 ) -> Result<(), Response> {
+    verify_zoom_signature(&app_state.zoom.secret_token, &headers, &body)?;
+
+    let body = serde_json::from_str::<ZoomWebhookBody>(&body).unwrap();
     tracing::info!("Processing zoom webhook event: {:?}", body.event);
 
     let event = ZoomWebhookEvent::try_from(body.clone()).map_err(|e| {
