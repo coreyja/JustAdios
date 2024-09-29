@@ -3,8 +3,8 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
     routing::{get, post},
 };
-use chrono::{DateTime, Utc};
-use cja::{app_state::AppState as _, server::session::DBSession, uuid::Uuid};
+use chrono::Utc;
+use cja::{app_state::AppState as _, server::session::DBSession};
 use maud::html;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};

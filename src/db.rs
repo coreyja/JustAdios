@@ -54,12 +54,15 @@ impl DBMeeting {
 
 pub struct DBUser {
     pub(crate) user_id: Uuid,
+    #[allow(dead_code)]
     pub(crate) zoom_id: String,
     pub(crate) display_name: String,
     pub(crate) access_token: String,
     pub(crate) refresh_token: String,
     pub(crate) expires_at: DateTime<Utc>,
+    #[allow(dead_code)]
     pub(crate) created_at: DateTime<Utc>,
+    #[allow(dead_code)]
     pub(crate) updated_at: DateTime<Utc>,
 }
 

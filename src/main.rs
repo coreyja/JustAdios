@@ -1,7 +1,4 @@
-use chrono::{DateTime, Utc};
-use cja::{
-    app_state::AppState as AS, color_eyre::eyre::Context as _, server::run_server, uuid::Uuid,
-};
+use cja::{app_state::AppState as AS, color_eyre::eyre::Context as _, server::run_server};
 use db::setup_db_pool;
 use tracing::info;
 

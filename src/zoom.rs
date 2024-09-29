@@ -1,5 +1,5 @@
 use eyre::Context;
-use reqwest::{Client, StatusCode};
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use crate::{routes::ZoomTokenResponse, ZoomState};
@@ -58,10 +58,6 @@ pub(crate) async fn adios(meeting_id: impl ToString, access_token: &str) -> cja:
 }
 
 impl ListedMeeting {
-    pub(crate) async fn adios(&self, access_token: &str) -> cja::Result<()> {
-        adios(self.id, access_token).await
-    }
-
     pub(crate) fn created_at(&self) -> cja::Result<chrono::NaiveDateTime> {
         chrono::NaiveDateTime::parse_from_str(&self.created_at, "%Y-%m-%dT%H:%M:%SZ")
             .context("Could not parse created at timestamp")
@@ -81,15 +77,6 @@ impl ListedMeeting {
         let duration = now - created_at;
         Ok(duration.num_seconds())
     }
-
-    pub(crate) async fn get_full_meeting(&self, access_token: &str) -> cja::Result<Meeting> {
-        let client = Client::new();
-        let url = format!("https://api.zoom.us/v2/meetings/{}", self.id);
-        let resp = client.get(url).bearer_auth(access_token).send().await?;
-        let resp_text = resp.text().await?;
-        dbg!(&resp_text);
-        Ok(serde_json::from_str(&resp_text)?)
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -108,6 +95,7 @@ pub(crate) struct MeetingOccurrence {
     pub duration: i64,
 }
 
+#[allow(dead_code)]
 pub(crate) enum MeetingType {
     Live,
     Scheduled,

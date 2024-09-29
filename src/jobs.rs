@@ -1,7 +1,7 @@
-use cja::{jobs::Job, uuid::Uuid};
+use cja::jobs::Job;
 use serde::{Deserialize, Serialize};
 
-use crate::{db::DBUser, AppState};
+use crate::AppState;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 struct NoopJob;
