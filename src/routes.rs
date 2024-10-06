@@ -170,10 +170,8 @@ async fn meetings(
 
     Ok(Section::Meetings.page(
         html! {
-            h1 { "Meetings" }
-
-            h2 { "Current Meetings" }
-            ul {
+            h2 class="text-2xl font-bold mb-2" { "Current Meetings" }
+            ul class="mb-4 list-disc pl-8" {
               @for meeting in current_meetings {
                 li {
                     (meeting)
@@ -181,8 +179,8 @@ async fn meetings(
               }
             }
 
-            h2 { "Ended Meetings" }
-            ul {
+            h2 class="text-2xl font-bold mb-2" { "Ended Meetings" }
+            ul class="mb-4 list-disc pl-8" {
               @for meeting in ended_meetings {
                 li {
                     (meeting)

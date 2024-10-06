@@ -5,8 +5,10 @@ pub struct Footer(Markup);
 impl Default for Footer {
     fn default() -> Self {
         Footer(html! {
-            p {
-                "Footer"
+            footer class="bg-gray-800 text-white p-4 mt-auto" {
+                p {
+                  "© Copyright 2024 Corey Alexander"
+                }
             }
         })
     }

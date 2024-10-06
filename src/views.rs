@@ -38,7 +38,7 @@ impl Render for Page {
               script src="https://cdn.tailwindcss.com" {}
             }
             body class="h-full" {
-              div class="min-h-full" {
+              div class="min-h-full flex flex-col" {
                 (self.header.render())
                 main."-mt-32" {
                     div."mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8" {
