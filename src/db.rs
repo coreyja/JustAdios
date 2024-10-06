@@ -97,6 +97,7 @@ pub struct DBUser {
     pub(crate) refresh_token: String,
     pub(crate) expires_at: DateTime<Utc>,
     pub(crate) default_meeting_length_minutes: Option<i32>,
+    pub(crate) zoom_pic_url: Option<String>,
     #[allow(dead_code)]
     pub(crate) created_at: DateTime<Utc>,
     #[allow(dead_code)]
@@ -130,5 +131,13 @@ impl DBUser {
         .await?;
 
         Ok(token_response.access_token)
+    }
+
+    pub fn cached_zoom_pic_url(&self) -> Option<String> {
+        if let Some(pic_url) = &self.zoom_pic_url {
+            return Some(format!("https://img.coreyja.com/unsafe/plain/{}", pic_url));
+        }
+
+        None
     }
 }

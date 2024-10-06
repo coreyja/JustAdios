@@ -15,23 +15,35 @@ mod webhooks;
 
 use crate::{
     db::{DBMeeting, DBUser},
-    zoom::{adios, get_meetings, MeetingType},
+    views::Section,
+    zoom::{get_meetings, MeetingType},
     AppState,
 };
 
 pub fn routes(app_state: AppState) -> axum::Router {
     axum::Router::new()
         .route("/", get(home))
-        .route("/debug", get(live_api_debug)) // This hits the Zoom API and gets the current meetings
+        .route("/login", get(login))
         .route("/meetings", get(meetings))
         .route("/meetings/:meeting_id", get(meeting))
         .route("/meetings/:meeting_id", post(edit_meeting))
-        .route("/oauth/zoom", get(zoom_oauth))
-        .route("/webhooks/zoom", post(webhooks::zoom_webhook))
         .route("/settings", get(settings))
         .route("/settings/edit", get(edit_settings))
         .route("/settings/edit", post(update_settings))
+        .route("/debug", get(live_api_debug))
+        .route("/oauth/zoom", get(zoom_oauth))
+        .route("/webhooks/zoom", post(webhooks::zoom_webhook))
         .with_state(app_state)
+}
+
+async fn login(State(state): State<AppState>) -> impl IntoResponse {
+    let zoom_redirect_uri = state.zoom_redirect_url();
+    let client_id = &state.zoom.client_id;
+    let zoom_auth_url = format!(
+        "https://zoom.us/oauth/authorize?response_type=code&client_id={client_id}&redirect_uri={zoom_redirect_uri}",
+    );
+
+    Redirect::to(&zoom_auth_url).into_response()
 }
 
 async fn live_api_debug(
@@ -118,6 +130,18 @@ async fn meetings(
     State(state): State<AppState>,
     session: DBSession,
 ) -> Result<impl IntoResponse, Response> {
+    let user = sqlx::query_as!(
+        DBUser,
+        "SELECT * FROM users WHERE user_id = $1",
+        session.user_id,
+    )
+    .fetch_one(state.db())
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to fetch user: {e:?}");
+        (StatusCode::INTERNAL_SERVER_ERROR, "Failed to fetch user").into_response()
+    })?;
+
     let meetings = sqlx::query_as!(
         DBMeeting,
         "SELECT * FROM meetings WHERE user_id = $1",
@@ -144,27 +168,30 @@ async fn meetings(
         .map(MeetingLink)
         .partition(|m| !m.0.is_ended());
 
-    Ok(html! {
-        h1 { "Meetings" }
+    Ok(Section::Meetings.page(
+        html! {
+            h1 { "Meetings" }
 
-        h2 { "Current Meetings" }
-        ul {
-          @for meeting in current_meetings {
-            li {
-                (meeting)
+            h2 { "Current Meetings" }
+            ul {
+              @for meeting in current_meetings {
+                li {
+                    (meeting)
+                }
+              }
             }
-          }
-        }
 
-        h2 { "Ended Meetings" }
-        ul {
-          @for meeting in ended_meetings {
-            li {
-                (meeting)
+            h2 { "Ended Meetings" }
+            ul {
+              @for meeting in ended_meetings {
+                li {
+                    (meeting)
+                }
+              }
             }
-          }
-        }
-    })
+        },
+        Some(user),
+    ))
 }
 
 async fn meeting(
@@ -217,7 +244,7 @@ async fn meeting(
         .clone()
         .unwrap_or_else(|| format!("#{}", meeting.zoom_id));
 
-    Ok(html! {
+    Ok(Section::Meetings.page(html! {
         h1 { "Meeting - " (name) }
 
         @if let Some(minutes_remaining) = minutes_remaining {
@@ -284,7 +311,7 @@ async fn meeting(
         }
 
         a href="/meetings" { "Back to Meetings" }
-    })
+    }, Some(user)))
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -329,12 +356,6 @@ async fn edit_meeting(
 }
 
 async fn home(State(state): State<AppState>, session: Option<DBSession>) -> impl IntoResponse {
-    let zoom_redirect_uri = state.zoom_redirect_url();
-    let client_id = &state.zoom.client_id;
-    let zoom_auth_url = format!(
-        "https://zoom.us/oauth/authorize?response_type=code&client_id={client_id}&redirect_uri={zoom_redirect_uri}",
-    );
-
     let user = if let Some(session) = session {
         tracing::info!("Session {} found, fetching user", session.session_id);
         sqlx::query_as!(
@@ -349,23 +370,18 @@ async fn home(State(state): State<AppState>, session: Option<DBSession>) -> impl
         None
     };
 
-    html! {
-        h1 { "Just Adios" }
+    Section::Dashboard.page(
+        html! {
+            p {
+              "Welcome to Just Adios. This app will end your Zoom meetings for you."
+            }
 
-        @if let Some(user) = user {
-          p {
-              "You are logged in as " (user.display_name)
-          }
-
-          a href="/meetings" { "Meetings" }
-        }
-
-        p {
-          "Welcome to Just Adios. This app will end your Zoom meetings for you."
-        }
-
-        a href=(zoom_auth_url) { "Authorize with Zoom" }
-    }
+            @if user.is_none() {
+              a href="/login" { "Login with Zoom" }
+            }
+        },
+        user,
+    )
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -461,12 +477,13 @@ async fn zoom_oauth(
     let expires_at = Utc::now() + chrono::Duration::seconds(token_response.expires_in);
     let user = sqlx::query_as!(
       DBUser,
-      "INSERT INTO users (zoom_id, display_name, access_token, refresh_token, expires_at) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (zoom_id) DO UPDATE SET (display_name, access_token, refresh_token, expires_at, updated_at) = ($2, $3, $4, $5, now()) RETURNING *",
+      "INSERT INTO users (zoom_id, display_name, access_token, refresh_token, expires_at, zoom_pic_url) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (zoom_id) DO UPDATE SET (display_name, access_token, refresh_token, expires_at, zoom_pic_url, updated_at) = ($2, $3, $4, $5, $6, now()) RETURNING *",
       user_info.id,
       user_info.display_name,
       token_response.access_token,
       token_response.refresh_token,
       expires_at,
+      user_info.pic_url,
     ).fetch_one(state.db()).await.map_err(|e| {
       tracing::error!("Failed to insert user into database: {e:?}");
       (
@@ -496,6 +513,7 @@ async fn zoom_oauth(
 struct ZoomUser {
     id: String,
     display_name: String,
+    pic_url: Option<String>,
 }
 
 async fn settings(
@@ -514,25 +532,28 @@ async fn settings(
         (StatusCode::INTERNAL_SERVER_ERROR, "Failed to fetch user").into_response()
     })?;
 
-    Ok(html! {
-        h1 { "Settings" }
+    Ok(Section::Settings.page(
+        html! {
+            h1 { "Settings" }
 
-        p {
-            "You are logged in as " (user.display_name)
-        }
+            p {
+                "You are logged in as " (user.display_name)
+            }
 
-        @if let Some(default_meeting_length_minutes) = user.default_meeting_length_minutes {
-          p {
-            "Default meeting length: " (default_meeting_length_minutes) " minutes"
-          }
-        } @else {
-          p {
-            "No default meeting length set"
-          }
-        }
+            @if let Some(default_meeting_length_minutes) = user.default_meeting_length_minutes {
+              p {
+                "Default meeting length: " (default_meeting_length_minutes) " minutes"
+              }
+            } @else {
+              p {
+                "No default meeting length set"
+              }
+            }
 
-        a href="/settings/edit" { "Edit Settings" }
-    })
+            a href="/settings/edit" { "Edit Settings" }
+        },
+        Some(user),
+    ))
 }
 
 async fn edit_settings(
@@ -551,7 +572,7 @@ async fn edit_settings(
         (StatusCode::INTERNAL_SERVER_ERROR, "Failed to fetch user").into_response()
     })?;
 
-    Ok(html! {
+    Ok(Section::Settings.page(html! {
         h1 { "Edit Settings" }
 
         p {
@@ -564,7 +585,7 @@ async fn edit_settings(
 
             input type="submit" value="Update" { }
         }
-    })
+    }, Some(user)))
 }
 
 async fn update_settings(
@@ -572,18 +593,6 @@ async fn update_settings(
     session: DBSession,
     Form(params): Form<EditSettingsParams>,
 ) -> Result<impl IntoResponse, Response> {
-    // let user = sqlx::query_as!(
-    //     DBUser,
-    //     "SELECT * FROM users WHERE user_id = $1",
-    //     session.user_id,
-    // )
-    // .fetch_one(state.db())
-    // .await
-    // .map_err(|e| {
-    //     tracing::error!("Failed to fetch user: {e:?}");
-    //     (StatusCode::INTERNAL_SERVER_ERROR, "Failed to fetch user").into_response()
-    // })?;
-
     sqlx::query!(
         "UPDATE users SET default_meeting_length_minutes = $1 WHERE user_id = $2",
         params.default_meeting_length_minutes,

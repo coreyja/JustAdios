@@ -9,6 +9,8 @@ mod routes;
 
 mod zoom;
 
+mod views;
+
 #[derive(Clone, Debug)]
 struct AppState {
     db: sqlx::PgPool,
