@@ -37,6 +37,7 @@ pub(crate) struct DBMeeting {
     pub(crate) zoom_uuid: String,
     pub(crate) start_time: DateTime<Utc>,
     pub(crate) end_time: Option<DateTime<Utc>>,
+    pub(crate) topic: Option<String>,
     pub(crate) max_meeting_length_minutes: Option<i32>,
     pub(crate) created_at: DateTime<Utc>,
     pub(crate) updated_at: DateTime<Utc>,

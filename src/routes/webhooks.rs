@@ -80,12 +80,13 @@ impl ProcessZoomWebhook for MeetingStartedPayload {
 
         let meeting = sqlx::query_as!(
             DBMeeting,
-            "INSERT INTO meetings (user_id, zoom_id, zoom_uuid, start_time) VALUES ($1, $2, $3, $4) RETURNING *",
+            "INSERT INTO meetings (user_id, zoom_id, zoom_uuid, start_time, topic) VALUES ($1, $2, $3, $4, $5) RETURNING *",
             user.user_id,
             self.object.id,
             self.object.uuid,
-            self.object.start_time
-        )
+            self.object.start_time,
+            self.object.topic
+        ) 
         .fetch_one(&state.db)
         .await
         .map_err(|e| {

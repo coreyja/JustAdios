@@ -6,7 +6,7 @@ use axum::{
 };
 use chrono::Utc;
 use cja::{app_state::AppState as _, server::session::DBSession};
-use maud::html;
+use maud::{html, Render};
 use reqwest::StatusCode;
 use serde::{Deserialize, Deserializer, Serialize};
 use tower_cookies::Cookies;
@@ -128,6 +128,22 @@ async fn live_meetings(
     })
 }
 
+struct MeetingLink(DBMeeting);
+
+impl Render for MeetingLink {
+    fn render(&self) -> maud::Markup {
+        let meeting = &self.0;
+        let name = meeting
+            .topic
+            .clone()
+            .unwrap_or_else(|| format!("Meeting #{}", meeting.zoom_id));
+
+        html! {
+            a href=(format!("/meetings/{}", self.0.meeting_id)) { (name) }
+        }
+    }
+}
+
 async fn meetings(
     State(state): State<AppState>,
     session: DBSession,
@@ -148,8 +164,15 @@ async fn meetings(
             .into_response()
     })?;
 
-    let (current_meetings, ended_meetings): (Vec<_>, Vec<_>) =
-        meetings.iter().partition(|m| !m.is_ended());
+    let mut meetings = meetings;
+    meetings.sort_by_key(|m| m.start_time);
+    meetings.reverse();
+    let meetings = meetings;
+
+    let (current_meetings, ended_meetings): (Vec<_>, Vec<_>) = meetings
+        .into_iter()
+        .map(MeetingLink)
+        .partition(|m| !m.0.is_ended());
 
     Ok(html! {
         h1 { "Meetings" }
@@ -158,7 +181,7 @@ async fn meetings(
         ul {
           @for meeting in current_meetings {
             li {
-              a href=(format!("/meetings/{}", meeting.meeting_id)) { (format!("{meeting:?}")) }
+                (meeting)
             }
           }
         }
@@ -167,7 +190,7 @@ async fn meetings(
         ul {
           @for meeting in ended_meetings {
             li {
-              a href=(format!("/meetings/{}", meeting.meeting_id)) { (format!("{meeting:?}")) }
+                (meeting)
             }
           }
         }
@@ -219,16 +242,23 @@ async fn meeting(
         None
     };
 
+    let name = meeting
+        .topic
+        .clone()
+        .unwrap_or_else(|| format!("#{}", meeting.zoom_id));
+
     Ok(html! {
-        h1 { "Meeting" }
+        h1 { "Meeting - " (name) }
 
         @if let Some(minutes_remaining) = minutes_remaining {
             h2 { "Meeting is still running" }
 
-            @match minutes_remaining {
-                0 => p { "Under 1 minutes remaining. Meeting will be ended shortly" },
-                1 => p { "1 minute remaining"},
-                minutes_remaining => p { (minutes_remaining) " minute(s) remaining"},
+            @if minutes_remaining <= 0 {
+                p { "Under 1 minutes remaining. Meeting will be ended shortly" }
+            } @else if minutes_remaining == 1 {
+                p { "1 minute remaining" }
+            } @else {
+                p { (minutes_remaining) " minutes remaining" }
             }
         }
 
