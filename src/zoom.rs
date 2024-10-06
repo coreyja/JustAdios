@@ -149,3 +149,64 @@ pub(crate) async fn refresh_access_token(
 
     Ok(token_response)
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct ChatMessage {
+    message: String,
+    to_channel: String,
+}
+
+#[allow(dead_code)]
+pub(crate) async fn send_chat_message(
+    access_token: &str,
+    meeting_id: &str,
+    message: &str,
+) -> cja::Result<()> {
+    let client = Client::new();
+    let url = "https://api.zoom.us/v2/chat/users/me/messages";
+    let to_channel = format!("meeting_{meeting_id}");
+    let body = ChatMessage {
+        message: message.to_string(),
+        to_channel,
+    };
+
+    let resp = client
+        .post(url)
+        .bearer_auth(access_token)
+        .json(&body)
+        .send()
+        .await?;
+
+    if resp.status().is_success() {
+        Ok(())
+    } else {
+        let status = resp.status();
+        let text = resp.text().await?;
+        Err(eyre::eyre!("Failed to send chat message: {status} {text}"))
+    }
+}
+
+#[allow(dead_code)]
+pub(crate) async fn get_chat_channels(access_token: &str) -> cja::Result<serde_json::Value> {
+    let client = Client::new();
+    let url = "https://api.zoom.us/v2/chat/users/me/channels";
+    let resp = client.get(url).bearer_auth(access_token).send().await?;
+
+    let json = resp.json().await?;
+
+    Ok(json)
+}
+
+#[allow(dead_code)]
+pub(crate) async fn get_meeting_details(
+    access_token: &str,
+    meeting_id: &str,
+) -> cja::Result<serde_json::Value> {
+    let client = Client::new();
+    let url = format!("https://api.zoom.us/v2/meetings/{meeting_id}");
+    let resp = client.get(url).bearer_auth(access_token).send().await?;
+
+    let json = resp.json().await?;
+
+    Ok(json)
+}

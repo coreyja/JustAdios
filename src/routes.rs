@@ -83,7 +83,16 @@ async fn meetings(
         (StatusCode::INTERNAL_SERVER_ERROR, "Failed to fetch user").into_response()
     })?;
 
-    let meetings = get_meetings(&user.access_token, MeetingType::Live)
+    let access_token = user.access_token(&state).await.map_err(|e| {
+        tracing::error!("Failed to get access token: {e:?}");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to get access token",
+        )
+            .into_response()
+    })?;
+
+    let meetings = get_meetings(&access_token, MeetingType::Live)
         .await
         .map_err(|e| {
             tracing::error!("Failed to get meetings: {e:?}");
