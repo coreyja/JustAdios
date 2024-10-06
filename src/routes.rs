@@ -22,11 +22,10 @@ use crate::{
 pub fn routes(app_state: AppState) -> axum::Router {
     axum::Router::new()
         .route("/", get(home))
-        .route("/live_meetings", get(live_meetings)) // This hits the Zoom API and gets the current meetings
-        .route("/meetings", get(meetings)) // This is the list of meetings that have been scheduled
+        .route("/debug", get(live_api_debug)) // This hits the Zoom API and gets the current meetings
+        .route("/meetings", get(meetings))
         .route("/meetings/:meeting_id", get(meeting))
         .route("/meetings/:meeting_id", post(edit_meeting))
-        .route("/meetings/end", get(end_meeting))
         .route("/oauth/zoom", get(zoom_oauth))
         .route("/webhooks/zoom", post(webhooks::zoom_webhook))
         .route("/settings", get(settings))
@@ -35,46 +34,7 @@ pub fn routes(app_state: AppState) -> axum::Router {
         .with_state(app_state)
 }
 
-#[derive(Debug, Deserialize, Clone)]
-struct EndMeetingParams {
-    meeting_id: String,
-}
-
-async fn end_meeting(
-    State(state): State<AppState>,
-    session: DBSession,
-    Query(params): Query<EndMeetingParams>,
-) -> Result<impl IntoResponse, Response> {
-    let user = sqlx::query_as!(
-        DBUser,
-        "SELECT * FROM users WHERE user_id = $1",
-        session.user_id,
-    )
-    .fetch_one(state.db())
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to fetch user: {e:?}");
-        (StatusCode::INTERNAL_SERVER_ERROR, "Failed to fetch user").into_response()
-    })?;
-
-    let meeting_id = params.meeting_id.parse::<i64>().map_err(|e| {
-        tracing::error!("Failed to parse meeting id: {e:?}");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to parse meeting id",
-        )
-            .into_response()
-    })?;
-
-    adios(meeting_id, &user.access_token).await.map_err(|e| {
-        tracing::error!("Failed to end meeting: {e:?}");
-        (StatusCode::INTERNAL_SERVER_ERROR, "Failed to end meeting").into_response()
-    })?;
-
-    Ok(Redirect::temporary("/meetings").into_response())
-}
-
-async fn live_meetings(
+async fn live_api_debug(
     State(state): State<AppState>,
     session: DBSession,
 ) -> Result<impl IntoResponse, Response> {
@@ -106,6 +66,13 @@ async fn live_meetings(
             (StatusCode::INTERNAL_SERVER_ERROR, "Failed to get meetings").into_response()
         })?;
 
+    let channels = crate::zoom::get_chat_channels(&access_token)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get channels: {e:?}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "Failed to get channels").into_response()
+        })?;
+
     Ok(html! {
         h1 { "Meetings" }
 
@@ -125,6 +92,9 @@ async fn live_meetings(
             }
           }
         }
+
+        h2 { "Channels" }
+        p { (format!("{channels:#?}")) }
     })
 }
 
