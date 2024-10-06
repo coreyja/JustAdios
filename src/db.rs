@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use cja::{
+    app_state::AppState as _,
     color_eyre::{self, eyre::Context as _},
     uuid::Uuid,
 };
@@ -36,6 +37,7 @@ pub(crate) struct DBMeeting {
     pub(crate) zoom_uuid: String,
     pub(crate) start_time: DateTime<Utc>,
     pub(crate) end_time: Option<DateTime<Utc>>,
+    pub(crate) max_meeting_length_minutes: Option<i32>,
     pub(crate) created_at: DateTime<Utc>,
     pub(crate) updated_at: DateTime<Utc>,
 }
@@ -50,6 +52,39 @@ impl DBMeeting {
 
         end_time_for_calc - self.start_time
     }
+
+    pub(crate) async fn fetch_minutes_remaining(&self, app_state: &AppState) -> cja::Result<i32> {
+        let user = sqlx::query_as!(
+            DBUser,
+            "SELECT * from Users where user_id = $1",
+            self.user_id
+        )
+        .fetch_one(app_state.db())
+        .await?;
+
+        Ok(self.minutes_remaining(&user))
+    }
+
+    pub(crate) fn minutes_remaining(&self, user: &DBUser) -> i32 {
+        let duration = self.duration();
+        let max_duration = self.max_duration(user);
+
+        (max_duration - duration).num_minutes() as i32
+    }
+
+    pub(crate) fn max_duration(&self, user: &DBUser) -> chrono::Duration {
+        if let Some(max_meeting_length_minutes) = self.max_meeting_length_minutes {
+            return chrono::Duration::minutes(max_meeting_length_minutes as i64);
+        }
+
+        if let Some(user_max_length) = user.default_meeting_length_minutes {
+            return chrono::Duration::minutes(user_max_length as i64);
+        }
+
+        chrono::Duration::minutes(
+            crate::jobs::end_meeting::DEFAULT_MAX_MEETING_LENGTH_MINUTES as i64,
+        )
+    }
 }
 
 pub struct DBUser {
@@ -60,6 +95,7 @@ pub struct DBUser {
     pub(crate) access_token: String,
     pub(crate) refresh_token: String,
     pub(crate) expires_at: DateTime<Utc>,
+    pub(crate) default_meeting_length_minutes: Option<i32>,
     #[allow(dead_code)]
     pub(crate) created_at: DateTime<Utc>,
     #[allow(dead_code)]

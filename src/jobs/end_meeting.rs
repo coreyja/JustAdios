@@ -11,6 +11,8 @@ pub(crate) struct MeetingId(Uuid);
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub(crate) struct EndMeeting(MeetingId);
 
+pub const DEFAULT_MAX_MEETING_LENGTH_MINUTES: i32 = 40;
+
 #[async_trait::async_trait]
 impl Job<AppState> for EndMeeting {
     const NAME: &'static str = "EndMeeting";
@@ -39,8 +41,9 @@ impl Job<AppState> for EndMeeting {
         }
 
         let duration = meeting.duration();
+        let max_duration = meeting.max_duration(&owner);
 
-        if duration > chrono::Duration::minutes(1) {
+        if duration > max_duration {
             debug!("Meeting duration is long enough, going to end it");
 
             let access_token = owner.access_token(&app_state).await?;
